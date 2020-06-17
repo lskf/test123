@@ -1,19 +1,29 @@
 <?php
-
-
 namespace app\chat\controller;
-
-
+use app\chat\model\OwnGroupUser;
 use think\Controller;
+use app\chat\logic\User as UserLogic;
+use app\chat\logic\OwnGroup as OwnGroupLogic;
 
 class Chat extends Controller
 {
     /**
      * 找朋友
      */
-    public function findFriend()
+    public function findFriends()
     {
-
+        $keywords=input("keywords");
+        $pageId=input("pageId");
+        $whereUser[]=["nickname","like","%$keywords%"];
+        $userLogic=new UserLogic();
+        $list=$userLogic->getUsers($whereUser,$pageId);
+        $listCount=$userLogic->getUsersCount($whereUser);
+        $data["count"]=$listCount;
+        $data["pageId"]=$pageId;
+        $data["data"]=$list;
+        $returnData["msg"]="成功";
+        $returnData["data"]=$data;
+        return json($returnData,200);
     }
 
     /**
@@ -21,7 +31,65 @@ class Chat extends Controller
      */
     public function addFriend()
     {
+        $user_id=session("user_id");
+//        $user_id=4;
+        $objId=input("objId");
+        $ownGroupName=input("ownGroupName");
+        $isGroup=0;
+        $yzxx=input("yzxx");
+        $data["user_id"]=$user_id;
+        $data["obj_id"]=$objId;
+        $data["is_group"]=$isGroup;
+        $applyInfo=model("Application")->where($data)->find();
+        $ownGroupLogic=new OwnGroupLogic();
+        $ownGroupId=$ownGroupLogic->getIdByName($ownGroupName,$user_id,true);
+        if ($applyInfo){
+            if($applyInfo['status']!=1){
+                $applyInfo->yzxx=$yzxx;
+                $applyInfo->own_group_id=$ownGroupId;
+                $applyInfo->status=0;
+                $applyInfo->create_time=time();
+                $res_apply=$applyInfo->isUpdate(true)->save();
+            }else{
+                $returnData["msg"]="他（她）已是你的朋友了";
+                $data["data"]=[];
+                return json($returnData,400);
+            }
+        }else{
+            $data["yzxx"]=$yzxx;
+            $data["own_group_id"]=$ownGroupId;
+            $data["create_time"]=time();
+            $data["status"]=0;
+            $res_apply=model("Application")->isUpdate(false)->save($data);
+        }
+        if ($res_apply){
+            $returnData["msg"]="成功";
+            $returnData["data"]=[];
+            return json($returnData,200);
+        }else{
+            $returnData["msg"]="失败";
+            $returnData["data"]=[];
+            return json($returnData,400);
+        }
+    }
 
+    /**
+     * 获取申请列表
+     */
+    public function getApplyFriendList()
+    {
+        $user_id=session("user_id");
+        $pageId=input("pageId");
+        $where_list["is_group"]=0;
+        $where_list["obj_id"]=$user_id;
+        $list=model("Application")->where($where_list)->page($pageId)->limit(10)->order("create_time desc")->select();
+        $listCount=model("Application")->where($where_list)->count();
+        $data["count"]=$listCount;
+        $data["pageId"]=$pageId;
+        $data["data"]=$list;
+        $returnData["msg"]="成功";
+        $returnData["data"]=$data;
+        return json($returnData,200);
     }
 
     /**
@@ -29,7 +97,54 @@ class Chat extends Controller
      */
     public function agreeFriend()
     {
-
+        $user_id=session("user_id");
+        $user_id=2;
+        $id=input("id");
+        $status=input("status");
+        $ownGroupName=input("ownGroupName");
+        $remarkName=input("remark_name");
+        $where["id"]=$id;
+        $where["obj_id"]=$user_id;
+        $applyInfo=model("Application")->where($where)->find();
+        if (!$applyInfo){
+            $returnData["msg"]="参数错误";
+            $returnData["data"]=[];
+            return json($returnData,500);
+        }
+        $applyInfo->startTrans();
+        $time=time();
+        $resApply=$applyInfo->isUpdate(true)->save(["status"=>$status,"upda_time"=>$time]);
+        if ($status==1){
+            $whereOwnGroup["user_id"]=$user_id;
+            $ownGroupLogic=new OwnGroupLogic();
+            $ownGroupId=$ownGroupLogic->getIdByName($ownGroupName,$user_id,true);
+            $dataOwnGroupUser[0]["group_id"]=$ownGroupId;
+            $dataOwnGroupUser[0]["user_id"]=$applyInfo->user_id;
+            $dataOwnGroupUser[0]["remark_name"]=$remarkName;
+            $dataOwnGroupUser[0]["create_time"]=$time;
+            $dataOwnGroupUser[1]["group_id"]=$applyInfo->own_group_id;
+            $dataOwnGroupUser[1]["user_id"]=$applyInfo->obj_id;
+            $dataOwnGroupUser[1]["create_time"]=$time;
+            $resOwnGroupUser=model("OwnGroupUser")->isUpdate(false)->saveAll($dataOwnGroupUser);
+            $dataFriend["user_id"]=$applyInfo["user_id"];
+            $dataFriend["obj_id"]=$applyInfo["obj_id"];
+            $dataFriend["create_time"]=$time;
+            $resFriend=model("Friend")->isUpdate(false)->save($dataFriend);
+        }else{
+            $resOwnGroupUser=true;
+            $resFriend=true;
+        }
+        if ($resApply&&$resOwnGroupUser&&$resFriend){
+            $applyInfo->commit();
+            $returnData["msg"]="成功";
+            $returnData["data"]=[];
+            return json($returnData,200);
+        }else{
+            $applyInfo->rollback();
+            $returnData["msg"]="失败";
+            $returnData["data"]=[];
+            return json($returnData,400);
+        }
     }
 
     /**
@@ -37,15 +152,85 @@ class Chat extends Controller
      */
     public function deleFriend()
     {
+        $user_id=session("user_id");
+        $ownGroupId=input("ownGroupId");
+        $objId=input("objId");
+        model("OwnGroupUser")->startTrans();
+        $whereOwnGroupUser["user_id"]=$objId;
+        $whereOwnGroupUser["group_id"]=$ownGroupId;
+        $resOwnGroupUserInfo=model("OwnGroupUser")->where($whereOwnGroupUser)->delete();
+        $whereFriend["user_id"]=$user_id;
+        $whereFriend["obj_id"]=$objId;
+        $whereFriend1["user_id"]=$objId;
+        $whereFriend1["obj_id"]=$user_id;
+        $resFriend=model("Friend")->where($whereFriend)->whereOr($whereFriend1)->delete();
+        if ($resOwnGroupUserInfo&&$resFriend){
+            model("OwnGroupUser")->commit();
+            $returnData["msg"]="成功";
+            $returnData["data"]=[];
+            return json($returnData,200);
+        }else{
+            model("OwnGroupUser")->rollback();
+            $returnData["msg"]="失败";
+            $returnData["data"]=[];
+            return json($returnData,400);
+        }
+    }
 
+    /**
+     * 创建群聊
+     */
+    public function createGroup()
+    {
+        $user_id=session("user_id");
+        $groupName=input("groupName");
+        $touXiang=input("touXiang");
+        $desc=input("desc");
+        $whereGroup["group_name"]=$groupName;
+        $groupInfo=model("Group")->where($whereGroup)->find();
+        if ($groupInfo){
+            $returnData["msg"]="该群聊名称已存在";
+            $returnData["data"]=[];
+            return json($returnData,400);
+        }
+        $dataGroup["user_id"]=$user_id;
+        $dataGroup["group_name"]=$groupName;
+        $dataGroup["create_time"]=time();
+        $dataGroup["touxiang"]=$touXiang;
+        $dataGroup["desc"]=$desc;
+        $resGroup=model("Group")->isUpdate(false)->save($dataGroup);
+        if ($resGroup){
+            $returnData["msg"]="成功";
+            $returnData["data"]=[];
+            return json($returnData,200);
+        }else{
+            $returnData["msg"]="失败";
+            $returnData["data"]=[];
+            return json($returnData,400);
+        }
     }
 
     /**
      * 找群聊
      */
-    public function findGroup()
+    public function findGroups()
     {
-
+        $groupName=input("groupName");
+        $isFuzzy=input("isFuzzy");
+        $pageId=input("pageId");
+        if ($isFuzzy){
+            $whereGroup=["group_name","like","%$groupName%"];
+        }else{
+            $whereGroup["group_name"]=$groupName;
+        }
+        $list=model("Group")->where($whereGroup)->page($pageId)->limit(10)->select();
+        $listCount=model("Group")->where($whereGroup)->count();
+        $data["count"]=$listCount;
+        $data["pageId"]=$pageId;
+        $data["data"]=$list;
+        $returnData["msg"]="成功";
+        $returnData["data"]=$data;
+        return json($returnData,200);
     }
 
     /**
@@ -73,17 +258,17 @@ class Chat extends Controller
     }
 
     /**
-     * 删除群聊
+     * 踢出群聊
      */
-    public function deleGroup()
+    public function dismissGroupUser()
     {
 
     }
 
     /**
-     * 创建分组（自己的分组）
+     * 删除群聊
      */
-    public function createOwnGroup()
+    public function deleGroup()
     {
 
     }
@@ -97,9 +282,41 @@ class Chat extends Controller
     }
 
     /**
+     * 创建分组（自己的分组）
+     */
+    public function createOwnGroup()
+    {
+
+    }
+
+    /**
+     * 移动朋友到我的分组
+     */
+    public function moveUserToGroup()
+    {
+
+    }
+
+    /**
      * 获取我的分组
      */
     public function getOwnGroup()
+    {
+
+    }
+
+    /**
+     * 修改我的分组
+     */
+    public function editOwnGroup()
+    {
+
+    }
+
+    /**
+     * 删除我的分组
+     */
+    public function deleOwnGroup()
     {
 
     }
