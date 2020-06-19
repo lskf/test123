@@ -12,4 +12,19 @@ class Index extends Controller
     {
         return $this->fetch();
     }
+
+    public function find()
+    {
+        return $this->fetch();
+    }
+
+    public function chatlog()
+    {
+        return $this->fetch();
+    }
+
+    public function msgbox()
+    {
+        return $this->fetch();
+    }
 }

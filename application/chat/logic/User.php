@@ -44,13 +44,6 @@ class User
     {
         $whereUser["id"]=$id;
         $userInfo=model("User")->hidden(["password"])->where($whereUser)->find();
-        if ($userInfo){
-            $returnData["data"]=$userInfo;
-            $returnData["status"]=1;
-        }else{
-            $returnData["data"]=[];
-            $returnData["status"]=2;
-        }
-        return $returnData;
+        return $userInfo;
     }
 }

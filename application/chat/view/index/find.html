@@ -1,0 +1,67 @@
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>发现</title>
+    <link href="/static/chat/css/style.css" rel="stylesheet">
+    <script src="/static/chat/js/jquery-3.4.1.min.js"></script>
+    <link href="/static/plugins/layui/css/layui.css" rel="stylesheet">
+    <script src="/static/plugins/layui/layui.js"></script>
+    <style>
+        .layui-form-item{
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+
+<div style="margin: 15px;">
+    <blockquote class="layui-elem-quote">
+        <form class="layui-form">
+            <div class="layui-form-item">
+                <label class="layui-form-label">搜索</label>
+                <div class="layui-input-inline">
+                    <input class="layui-input" name="keywords" placeholder="请输入关键字">
+                </div>
+                <label class="layui-form-label">模糊搜索</label>
+                <div class="layui-input-inline">
+                    <input type="checkbox" name="isFuzzy" lay-skin="switch" lay-text="ON|OFF" checked>
+                </div>
+                <div class="layui-input-inline">
+                    <button class="layui-btn" lay-submit lay-filter="tj">搜索</button>
+                </div>
+            </div>
+        </form>
+    </blockquote>
+    <div class="friend_list_box">
+        <div class="friend_item">
+            <img class="friend_tx">
+            <button class="layui-btn layui-btn-normal layui-btn-sm">添加</button>
+            <div class="friend_item_title">xixi</div>
+            <div class="friend_item_sign" title="xixi">xixi</div>
+        </div>
+    </div>
+    <div style="clear: both;"></div>
+    <div id="page1" style="text-align: center;"></div>
+</div>
+<script>
+    layui.use(['layer','form','laytpl','laypage',"layim"], function(){
+        var layer = layui.layer;
+        var form = layui.form;
+        var laytpl = layui.laytpl;
+        var laypage = layui.laypage;
+        var layim = layui.layim;
+
+        laypage.render({
+            elem: 'page1' //注意，这里的 test1 是 ID，不用加 # 号
+            ,count: 50 //数据总数，从服务端得到
+        });
+        //一些添加好友请求之类的交互参见文档
+    });
+
+</script>
+</body>
+</html>

@@ -36,4 +36,16 @@ class OwnGroup
         }
         return $ownGroupId;
     }
+
+    public function getUserById($groupId)
+    {
+        $lists=model("OwnGroupUser")->where(["group_id"=>$groupId])->select();
+        return $lists;
+    }
+
+    public function getGroupsByUserId($userId)
+    {
+        $lists=model("OwnGroup")->where(["user_id"=>$userId])->select();
+        return $lists;
+    }
 }

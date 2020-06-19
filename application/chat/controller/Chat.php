@@ -34,6 +34,13 @@ class Chat extends Controller
         $user_id=session("user_id");
 //        $user_id=4;
         $objId=input("objId");
+        $userLogic=new UserLogic();
+        $objInfo=$userLogic->getUserInfoById($objId);
+        if (!$objInfo){
+            $returnData["msg"]="该用户不存在";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
         $ownGroupName=input("ownGroupName");
         $isGroup=0;
         $yzxx=input("yzxx");
@@ -98,7 +105,7 @@ class Chat extends Controller
     public function agreeFriend()
     {
         $user_id=session("user_id");
-        $user_id=2;
+//        $user_id=2;
         $id=input("id");
         $status=input("status");
         $ownGroupName=input("ownGroupName");
@@ -193,17 +200,25 @@ class Chat extends Controller
             $returnData["data"]=[];
             return json($returnData,400);
         }
+        $time=time();
         $dataGroup["user_id"]=$user_id;
         $dataGroup["group_name"]=$groupName;
-        $dataGroup["create_time"]=time();
+        $dataGroup["create_time"]=$time;
         $dataGroup["touxiang"]=$touXiang;
         $dataGroup["desc"]=$desc;
+        model("Group")->startTrans();
         $resGroup=model("Group")->isUpdate(false)->save($dataGroup);
-        if ($resGroup){
+        $dataGroupUser["group_id"]=$resGroup->id;
+        $dataGroupUser["user_id"]=$user_id;
+        $dataGroupUser["create_time"]=$time;
+        $resGroupUser=model("GroupUser")->isUpdate(false)->save($dataGroupUser);
+        if ($resGroup&&$resGroupUser){
+            model("Group")->commit();
             $returnData["msg"]="成功";
             $returnData["data"]=[];
             return json($returnData,200);
         }else{
+            model("Group")->rollback();
             $returnData["msg"]="失败";
             $returnData["data"]=[];
             return json($returnData,400);
@@ -238,7 +253,75 @@ class Chat extends Controller
      */
     public function addGroup()
     {
+        $user_id=session("user_id");
+//        $user_id=4;
+        $objId=input("objId");
+        $objInfo=model("Group")->where(["id"=>$objId])->find();
+        if (!$objInfo){
+            $returnData["msg"]="该群聊不存在";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
+        $isGroup=1;
+        $yzxx=input("yzxx");
+        $data["user_id"]=$user_id;
+        $data["obj_id"]=$objId;
+        $data["is_group"]=$isGroup;
+        $applyInfo=model("Application")->where($data)->find();
+        if ($applyInfo){
+            if($applyInfo['status']!=1){
+                $applyInfo->yzxx=$yzxx;
+                $applyInfo->status=0;
+                $applyInfo->create_time=time();
+                $res_apply=$applyInfo->isUpdate(true)->save();
+            }else{
+                $returnData["msg"]="你已经加入该群聊了";
+                $data["data"]=[];
+                return json($returnData,400);
+            }
+        }else{
+            $data["yzxx"]=$yzxx;
+            $data["create_time"]=time();
+            $data["status"]=0;
+            $res_apply=model("Application")->isUpdate(false)->save($data);
+        }
+        if ($res_apply){
+            $returnData["msg"]="成功";
+            $returnData["data"]=[];
+            return json($returnData,200);
+        }else{
+            $returnData["msg"]="失败";
+            $returnData["data"]=[];
+            return json($returnData,400);
+        }
+    }
 
+    /**
+     * 获取群聊申请列表
+     */
+    public function getApplyGroupList()
+    {
+        $user_id=session("user_id");
+        $groupId=input("groupId");
+        $whereGroup["user_id"]=$user_id;
+        $whereGroup["id"]=$groupId;
+        $groupInfo=model("Group")->where($whereGroup)->find();
+        if (!$groupInfo){
+            $returnData["msg"]="参数错误";
+            $data["data"]=[];
+            return json($returnData,500);
+        }
+        $pageId=input("pageId");
+        $where_list["is_group"]=1;
+        $where_list["obj_id"]=$groupId;
+        $list=model("Application")->where($where_list)->page($pageId)->limit(10)->order("create_time desc")->select();
+        $listCount=model("Application")->where($where_list)->count();
+        $data["count"]=$listCount;
+        $data["pageId"]=$pageId;
+        $data["data"]=$list;
+        $returnData["msg"]="成功";
+        $returnData["data"]=$data;
+        return json($returnData,200);
     }
 
     /**
@@ -246,7 +329,44 @@ class Chat extends Controller
      */
     public function agreeGroup()
     {
-
+        $userId=session("user_id");
+        $id=input("id");
+        $status=input("status");
+        $applyInfo=model("Application")->where(["id"=>$id])->find();
+        if (!$applyInfo){
+            $returnData["msg"]="参数错误";
+            $data["data"]=[];
+            return json($returnData,500);
+        }
+        $groupId=$applyInfo->group_id;
+        $whereGroup["user_id"]=$userId;
+        $whereGroup["id"]=$groupId;
+        $groupInfo=model("Group")->where($whereGroup)->find();
+        if (!$groupInfo){
+            $returnData["msg"]="参数错误";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
+        model("Application")->startTrans();
+        $time=time();
+        $dataApply["status"]=$status;
+        $dataApply["upda_time"]=$time;
+        $resApply=model("Application")->isUpdate(true)->save($dataApply,["id"=>$id]);
+        $dataGroupUser["group_id"]=$groupId;
+        $dataGroupUser["user_id"]=$applyInfo->user_id;
+        $dataGroupUser["create_time"]=$time;
+        $resGroupUser=model("GroupUser")->save($dataGroupUser);
+        if ($resApply&&$resGroupUser){
+            model("Application")->commit();
+            $returnData["msg"]="成功";
+            $data["data"]=[];
+            return json($returnData,200);
+        }else{
+            model("Application")->rollback();
+            $returnData["msg"]="失败";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
     }
 
     /**
@@ -254,7 +374,27 @@ class Chat extends Controller
      */
     public function exitGroup()
     {
-
+        $userId=session("user_id");
+        $groupId=input("groupId");
+        $whereGroupUser["user_id"]=$userId;
+        $whereGroupUser["group_id"]=$groupId;
+        $whereGroupUser["status"]=1;
+        $groupUserInfo=model("GroupUser")->where($whereGroupUser)->find();
+        if (!$groupUserInfo){
+            $returnData["msg"]="参数错误";
+            $data["data"]=[];
+            return json($returnData,500);
+        }
+        $resGroupUser=model("GroupUser")->where($whereGroupUser)->delete();
+        if ($resGroupUser){
+            $returnData["msg"]="成功";
+            $data["data"]=[];
+            return json($returnData,200);
+        }else{
+            $returnData["msg"]="失败";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
     }
 
     /**
@@ -262,7 +402,35 @@ class Chat extends Controller
      */
     public function dismissGroupUser()
     {
-
+        $userId=session("user_id");
+        $objId=input("objId");
+        $groupId=input("groupId");
+        $whereGroup["user_id"]=$userId;
+        $whereGroup["id"]=$groupId;
+        $groupInfo=model("Group")->where($whereGroup)->find();
+        if (!$groupInfo){
+            $returnData["msg"]="参数错误";
+            $data["data"]=[];
+            return json($returnData,500);
+        }
+        $whereGroupUser["user_id"]=$objId;
+        $whereGroupUser["group_id"]=$groupId;
+        $groupUserInfo=model("GroupUser")->where($whereGroupUser)->find();
+        if (!$groupUserInfo){
+            $returnData["msg"]="参数错误";
+            $data["data"]=[];
+            return json($returnData,500);
+        }
+        $resGroupUser=model("GroupUser")->where($whereGroupUser)->delete();
+        if ($resGroupUser){
+            $returnData["msg"]="成功";
+            $data["data"]=[];
+            return json($returnData,200);
+        }else{
+            $returnData["msg"]="失败";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
     }
 
     /**
@@ -270,7 +438,31 @@ class Chat extends Controller
      */
     public function deleGroup()
     {
-
+        $userId=session("user_id");
+        $groupId=input("groupId");
+        $whereGroup["user_id"]=$userId;
+        $whereGroup["id"]=$groupId;
+        $groupInfo=model("Group")->where($whereGroup)->find();
+        if (!$groupInfo){
+            $returnData["msg"]="参数错误";
+            $data["data"]=[];
+            return json($returnData,500);
+        }
+        model("GroupUser")->startTrans();
+        $whereGroupUser["group_id"]=$groupId;
+        $resGroupUser=model("GroupUser")->where($whereGroupUser)->delete();
+        $resGroup=model("GroupUser")->where($whereGroup)->delete();
+        if ($resGroupUser&&$resGroup){
+            model("GroupUser")->commit();
+            $returnData["msg"]="成功";
+            $data["data"]=[];
+            return json($returnData,200);
+        }else{
+            model("GroupUser")->rollback();
+            $returnData["msg"]="失败";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
     }
 
     /**
@@ -278,7 +470,17 @@ class Chat extends Controller
      */
     public function getMineInfo()
     {
-
+        $userId=session("user_id");
+        $userLogic=new UserLogic();
+        $userInfo=$userLogic->getUserInfoById($userId);
+        if (!$userInfo){
+            $returnData["msg"]="失败";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
+        $returnData["msg"]="成功";
+        $data["data"]=$userInfo;
+        return json($returnData,200);
     }
 
     /**
@@ -286,7 +488,19 @@ class Chat extends Controller
      */
     public function createOwnGroup()
     {
-
+        $userId=session("user_id");
+        $ownGroupName=input("ownGroupName");
+        $ownGroupLogic=new OwnGroupLogic();
+        $ownGroupId=$ownGroupLogic->getIdByName($ownGroupName,$userId,true);
+        if ($ownGroupId){
+            $returnData["msg"]="成功";
+            $data["data"]=["ownGroupId"=>$ownGroupId];
+            return json($returnData,200);
+        }else{
+            $returnData["msg"]="失败";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
     }
 
     /**
@@ -294,15 +508,30 @@ class Chat extends Controller
      */
     public function moveUserToGroup()
     {
-
-    }
-
-    /**
-     * 获取我的分组
-     */
-    public function getOwnGroup()
-    {
-
+        $userId=session("user_id");
+        $objIds=trim(input("objIds"),",");
+        $oldGroupName=input("oldGroupName");
+        $newGroupName=input("newGroupName");
+        $ownGroupLogic=new OwnGroupLogic();
+        $oldGroupId=$ownGroupLogic->getIdByName($oldGroupName,$userId);
+        $newGroupId=$ownGroupLogic->getIdByName($newGroupName,$userId,true);
+        if (!$oldGroupId){
+            $returnData["msg"]="参数错误";
+            $data["data"]=[];
+            return json($returnData,500);
+        }
+        $whereOwnGroupUser[]=["group_id","=",$oldGroupId];
+        $whereOwnGroupUser[]=["user_id","in",$objIds];
+        $resOwnGroupUser=model("OwnGroupUser")->isUpdate(true)->save(["group_id"=>$newGroupId],$whereOwnGroupUser);
+        if ($resOwnGroupUser){
+            $returnData["msg"]="成功";
+            $data["data"]=[];
+            return json($returnData,200);
+        }else{
+            $returnData["msg"]="失败";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
     }
 
     /**
@@ -310,7 +539,40 @@ class Chat extends Controller
      */
     public function editOwnGroup()
     {
-
+        $userId=session("user_id");
+        $ownGroupId=input("ownGroupId");
+        $newOwnGroupName=input("newOwnGroupName");
+        $ownGroupLogic=new OwnGroupLogic();
+        $mrOwnGroupId=$ownGroupLogic->getIdByName("默认分组",$userId,false);
+        if ($mrOwnGroupId==$ownGroupId){
+            $returnData["msg"]="不能修改默认分组";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
+        $newOwnGroupId=$ownGroupLogic->getIdByName($newOwnGroupName,$userId,false);
+        if ($newOwnGroupId){
+            $returnData["msg"]="该分组已存在";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
+        $whereOwnGroup["user_id"]=$userId;
+        $whereOwnGroup["group_id"]=$ownGroupId;
+        $ownGroupInfo=model("OwnGroup")->where($whereOwnGroup)->find();
+        if (!$ownGroupInfo){
+            $returnData["msg"]="参数错误";
+            $data["data"]=[];
+            return json($returnData,500);
+        }
+        $resOwnGroup=model("OwnGroup")->save(["group_name"=>$newOwnGroupName],$whereOwnGroup);
+        if ($resOwnGroup){
+            $returnData["msg"]="成功";
+            $data["data"]=[];
+            return json($returnData,200);
+        }else{
+            $returnData["msg"]="失败";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
     }
 
     /**
@@ -318,23 +580,38 @@ class Chat extends Controller
      */
     public function deleOwnGroup()
     {
-
-    }
-
-    /**
-     * 获取我的分组的用户
-     */
-    public function getOwnGroupUser()
-    {
-
-    }
-
-    /**
-     * 获取群聊
-     */
-    public function getGroup()
-    {
-
+        $userId=session("user_id");
+        $ownGroupId=input("ownGroupId");
+        $whereOwnGroup["user_id"]=$userId;
+        $whereOwnGroup["group_id"]=$ownGroupId;
+        $ownGroupInfo=model("OwnGroup")->where($whereOwnGroup)->find();
+        if (!$ownGroupInfo){
+            $returnData["msg"]="参数错误";
+            $data["data"]=[];
+            return json($returnData,500);
+        }
+        $ownGroupLogic=new OwnGroupLogic();
+        $mrOwnGroupId=$ownGroupLogic->getIdByName("默认分组",$userId,false);
+        if ($mrOwnGroupId==$ownGroupId){
+            $returnData["msg"]="不能删除默认分组";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
+        model("OwnGroup")->startTrans();
+        $whereOwnGroupUser["group_id"]=$ownGroupId;
+        $resOwnGroupUser=model("OwnGroupUser")->save(["group_id"=>$mrOwnGroupId],$whereOwnGroupUser);
+        $resOwnGroup=model("OwnGroup")->where($whereOwnGroup)->delete();
+        if ($resOwnGroup&&$resOwnGroupUser){
+            model("OwnGroup")->commit();
+            $returnData["msg"]="成功";
+            $data["data"]=[];
+            return json($returnData,200);
+        }else{
+            model("OwnGroup")->rollback();
+            $returnData["msg"]="失败";
+            $data["data"]=[];
+            return json($returnData,400);
+        }
     }
 
     /**
@@ -415,6 +692,15 @@ class Chat extends Controller
 
     public function getList()
     {
+        $userId=session("user_id");
+        $userLogic=new UserLogic();
+        $mine=$userLogic->getUserInfoById($userId);
+        $whereGroups["user_id"]=$userId;
+        $groups=model("GroupUser")->with("groupInfo")->where($whereGroups)->select();
+        $whereOwnGroups["user_id"]=$userId;
+        $ownGroups=model("OwnGroup")->where($whereOwnGroups)->select();
+//        $list=model("OwnGroup")
+
         $data_str = '{
           "code": 0
           ,"msg": ""
